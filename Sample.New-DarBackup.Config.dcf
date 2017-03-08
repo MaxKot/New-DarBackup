@@ -1,0 +1,113 @@
+all:
+-R "/cygdrive"
+-vt
+
+create:
+-zxz:6
+
+# here we define some files that have not to be compressed.
+# First setting case insentive mode on:
+-an
+# Then telling dar that the following masks are glob expression
+# which is the default, right, but if sooner on command-line the
+# user swapped to regex, the following mask would not work as expected
+# any more, so we force back to glob expression in any case:
+-ag
+
+# Now follows all the file specification to never try to compress:
+
+# compressed video format
+-Z "*.avi"
+-Z "*.cr2"
+-Z "*.flac"
+-Z "*.flv"
+-Z "*.mkv"
+-Z "*.mov"
+-Z "*.mp4"
+-Z "*.mpeg"
+-Z "*.mpg"
+-Z "*.vob"
+-Z "*.wmv"
+
+# compressed picture format
+-Z "*.jpg"
+-Z "*.jpeg"
+-Z "*.mpeg"
+-Z "*.png"
+
+# compressed audio format
+-Z "*.mp3"
+-Z "*.ogg"
+
+# compressed package
+-Z "*.deb"
+-Z "*.tbz2"
+-Z "*.tgz"
+-Z "*.rpm"
+-Z "*.run"
+-Z "*.sis"
+-Z "*.xpi"
+
+# other compressed data
+-Z "*.7z"
+-Z "*.bz2"
+-Z "*.gz"
+-Z "*.jar"
+-Z "*.rar"
+-Z "*.xz"
+-Z "*.zip"
+-Z "*.Z"
+
+# dar archives (may be compressed)
+-Z "*.dar"
+
+# Now we swap back to case sensitive mode for masks which is the default
+# mode:
+-acase
+
+t-profile-main:
+
+-P "c/hiberfil.sys"
+-P "c/pagefile.sys"
+-P "c/Recovery"
+-P "c/System Volume Information"
+
+-X .lock
+-X *.kdb.lock
+-X *.log
+-X thumbs.db
+-X *~
+-X *.tmp
+-X .thumbnails
+
+-g "c/Users/"
+-P "c/Users/*/.nuget"
+-P "c/Users/*/.oracle_jre_usage"
+-P "c/Users/*/Documents/IISExpress/IIS Temporary Compressed Files"
+-P "c/Users/*/Documents/IISExpress/Logs"
+-P "c/Users/*/Documents/IISExpress/TraceLogFiles"
+-P "c/Users/*/AppData/Local"
+-P "c/Users/*/AppData/LocalLow"
+-P "c/Users/*/AppData/Roaming/bower"
+-P "c/Users/*/AppData/Roaming/GitExtensions/GitExtensions/Images"
+-P "c/Users/*/AppData/Roaming/GitExtensions/GitExtensions/Recent"
+-P "c/Users/*/AppData/Roaming/npm"
+-P "c/Users/*/AppData/Roaming/Microsoft/Windows/Cookies"
+-P "c/Users/*/AppData/Roaming/Microsoft/Windows/Recent"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles"
+-P "c/Users/*/AppData/Roaming/NVIDIA"
+-P "c/Users/*/AppData/Roaming/Skype"
+
+t-profile-private:
+-K "bf:my-password"
+-g "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/Cache"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/cache2"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/datareporting"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/jumpListCache"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/minidumps"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/mozilla-media-cache"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/saved-telemetry-pings"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/startupCache"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/storage/temporary"
+-P "c/Users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/cookies.sqlite*"
