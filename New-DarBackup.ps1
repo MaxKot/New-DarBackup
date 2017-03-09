@@ -119,7 +119,15 @@ function New-Target
     param
     (
         [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
-        [Object] $Template
+        [Object] $Template,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [String] $FullSuffix,
+        
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [String] $DiffSuffix
     );
 
     Begin
@@ -130,14 +138,29 @@ function New-Target
     {
         function New-NameFunction
         {
+            [CmdletBinding()]
             param
             (
-                $Source
+                [Parameter(Mandatory = $true, Position = 0)]
+                [Object] $Source
             );
 
             if($Source -is [String])
             {
-                return { param($Date, $Kind); return $Source -f $Date, $Kind; }.GetNewClosure();
+                return {
+                    [CmdletBinding()]
+                    param
+                    (
+                        [Parameter(Mandatory = $true, Position = 0)]
+                        [DateTime] $Date,
+
+                        [Parameter(Mandatory = $true, Position = 1)]
+                        [AllowEmptyString()]
+                        [String] $Kind
+                    );
+
+                    return $Source -f $Date, $Kind;
+                }.GetNewClosure();
             }
             elseif($Source -is [scriptblock])
             {
@@ -151,9 +174,19 @@ function New-Target
 
         function New-NameParserFunction
         {
+            [CmdletBinding()]
             param
             (
-                $Source
+                [Parameter(Mandatory = $true, Position = 0)]
+                [Object] $Source,
+
+                [Parameter(Mandatory = $true)]
+                [AllowEmptyString()]
+                [String] $FullSuffix,
+        
+                [Parameter(Mandatory = $true)]
+                [AllowEmptyString()]
+                [String] $DiffSuffix
             );
 
             if($Source -is [String])
@@ -164,10 +197,16 @@ function New-Target
             if($Source -is [regex])
             {
                 return {
-                    param($Name);
+                    [CmdletBinding()]
+                    param
+                    (
+                        [Parameter(Mandatory = $true, Position = 0)]
+                        [AllowEmptyString()]
+                        [String] $Name
+                    );
 
                     $m = $Source.Match($Name);
-                    Write-Debug "Matching name '$Name' again regular expression '$Source'. Match: $m.";
+                    Write-Verbose "Matching name '$Name' again regular expression '$Source'. Match: $m.";
 
                     $ds = $m.Groups['date'];
                     if($ds -eq $null)
@@ -244,8 +283,8 @@ function New-Target
 
         $result = New-Object -TypeName psobject -Property @{
             Target = $target;
-            Name = (New-NameFunction $name);
-            NameParser = (New-NameParserFunction $nameParser);
+            Name = (New-NameFunction -Source $name);
+            NameParser = (New-NameParserFunction -Source $nameParser -FullSuffix $FullSuffix -DiffSuffix $DiffSuffix);
         };
         Write-Output $result;
 
@@ -284,12 +323,18 @@ function Get-BackupParameter
             $fileName = $file.Name;
             $partName = [System.IO.Path]::GetFileNameWithoutExtension($fileName);
             $baseName = [System.IO.Path]::GetFileNameWithoutExtension($partName);
+            Write-Verbose "Checking a possible backup file. Filename: '$fileName'. Detected base name: '$baseName'.";
 
             $backupInfo = & $to.NameParser -Name $baseName;
             if($backupInfo -ne $null)
             {
+                Write-Verbose "Found a backup file of current target. Filename: '$fileName'.";
                 $backup = @{ File = $file; BaseName = $baseName; } + $backupInfo;
                 $backups[$backup.Kind] += @(,$backup);
+            }
+            else
+            {
+                Write-Verbose "File is not a backup of current target. Filename: '$fileName'.";
             }
         }
 
@@ -302,6 +347,7 @@ function Get-BackupParameter
         param
         (
             [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+            [AllowNull()]
             [Object] $Backup
         );
 
@@ -463,7 +509,7 @@ if([String]::IsNullOrWhiteSpace($DiffSuffix))
 # =============================
 
 Write-Verbose "Input backup targets: [$($Target | Out-String)].";
-$targetObjects = $Target | New-Target;
+$targetObjects = $Target | New-Target -FullSuffix $FullSuffix -DiffSuffix $DiffSuffix;
 
 # Determine backup kind
 # =============================
