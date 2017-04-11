@@ -560,4 +560,6 @@ foreach($to in $targetObjects)
     Write-Timing -Format "Tested backup with target $darTarget at {0:O}";
 }
 
-Write-Timing -Format 'Backup script complete at {0:O}';
+$private:end = Get-Date;
+$elapsed = ($private:end - $private:start).ToString("c");
+Write-Timing -Format "Backup script complete at {0:O} in $elapsed" -Time $private:end;
