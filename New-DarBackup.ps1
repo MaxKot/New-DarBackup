@@ -35,8 +35,16 @@ param
     [Switch][Boolean] $Full,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Diff')]
-    [Switch][Boolean] $Diff
+    [Switch][Boolean] $Diff,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Abort', 'Delete', 'Ignore')]
+    [String] $IncompleteBackupHandling
 );
+
+$incompleteBackupAbort = 'Abort';
+$incompleteBackupDelete = 'Delete';
+$incompleteBackupIgnore = 'Ignore';
 
 # Function declarations.
 # =============================
@@ -433,6 +441,34 @@ function Get-BackupParameter
     };
 }
 
+$errorLevel = 0;
+
+function Get-ErrorLevel
+{
+    [CmdletBinding()]
+    param
+    (
+
+    );
+
+    return $errorLevel;
+}
+
+function Set-ErrorLevel
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory = $true, Position = 0)]
+        [String] $MinLevel
+    );
+
+    if($errorLevel -lt $MinLevel)
+    {
+        $errorLevel = $MinLevel;
+    }
+}
+
 # Script body.
 # =============================
 
@@ -505,6 +541,18 @@ if([String]::IsNullOrWhiteSpace($DiffSuffix))
     $DiffSuffix = $local:DefaultDiffSuffix;
 }
 
+if([String]::IsNullOrWhiteSpace($IncompleteBackupHandling))
+{
+    if([String]::IsNullOrWhiteSpace($local:DefaultIncompleteBackupHandling))
+    {
+        $IncompleteBackupHandling = $incompleteBackupDelete
+    }
+    else
+    {
+        $IncompleteBackupHandling = $local:DefaultIncompleteBackupHandling;
+    }
+}
+
 # Normalize $Target.
 # =============================
 
@@ -522,42 +570,116 @@ if(-not $Full -and -not $Diff)
 # Run backup.
 # =============================
 
+$errorLevel = 0;
+
 foreach($to in $targetObjects)
 {
-    $parameters = Get-BackupParameter -Target $to;
-    $kind = $parameters.Kind;
-    $reference = $parameters.ReferenceBackup;
-
-    $darTarget = $to.Target;
-    $name = &$to.Name -Date $start -Kind $kind;
-    $fullNameCyg = $BackupPathCyg + '/' + $name;
-    
-    $referenceArg = '';
-    if(-not [String]::IsNullOrWhiteSpace($reference))
+    $private:lockFile = [System.IO.FileStream] $null;
+    try
     {
-        $referenceCyg = $BackupPathCyg + '/' + $reference;
-        $referenceArg = " -A `"$referenceCyg`"";
+        $parameters = Get-BackupParameter -Target $to;
+        $kind = $parameters.Kind;
+        $reference = $parameters.ReferenceBackup;
+
+        $darTarget = $to.Target;
+        $name = &$to.Name -Date $start -Kind $kind;
+        $fullNameCyg = $BackupPathCyg + '/' + $name;
+
+        $referenceArg = '';
+        if(-not [String]::IsNullOrWhiteSpace($reference))
+        {
+            $referenceCyg = $BackupPathCyg + '/' + $reference;
+            $referenceArg = " --ref `"$referenceCyg`"";
+        }
+
+        $logFullName = Join-Path $LogPath ($name + '.log');
+        $lockFullName = Join-Path $BackupPath ($name + '.lock');
+
+        if([System.IO.File]::Exists($lockFullName))
+        {
+            try
+            {
+                $fileStreamCtor = [System.IO.FileStream].GetConstructor(@(
+                    [String],
+                    [System.IO.FileMode],
+                    [System.IO.FileAccess],
+                    [System.IO.FileShare],
+                    [Int32],
+                    [System.IO.FileOptions]
+                ));
+                $private:lockFile = $fileStreamCtor.Invoke(@(
+                    [String] $lockFullName,
+                    [System.IO.FileMode]::Truncate,
+                    [System.IO.FileAccess]::ReadWrite,
+                    [System.IO.FileShare]::None,
+                    4096,
+                    [System.IO.FileOptions]([System.IO.FileOptions]::WriteThrough)
+                ));
+            }
+            catch [System.IO.IOException]
+            {
+                Set-ErrorLevel 4;
+                Write-Error "Lock file '$lockFullName' exists and is unaccessable. It may be caused by another backup running.";
+                Write-Error "$Error";
+                break;
+            }
+            if($IncompleteBackupHandling -eq $incompleteBackupAbort)
+            {
+                Set-ErrorLevel 3;
+                Write-Error "Lock file '$lockFullName' exists and `$IncompleteBackupHandling is set to '$IncompleteBackupHandling'. Backup can not proceed until the lock file is removed.";
+                break;
+            }
+            elseif($IncompleteBackupHandling -eq $incompleteBackupDelete)
+            {
+                $mask = "$name.*.dar";
+                Write-Warning "Lock file '$lockFullName' exists and `$IncompleteBackupHandling is set to '$IncompleteBackupHandling'. Existing files in '$BackupPath' with mask '$mask' will be removed.";
+                Get-ChildItem -Path $BackupPath -Filter $mask -File |
+                    Remove-Item -WhatIf:$WhatIfPreference;
+            }
+        }
+        else
+        {
+            $private:lockFile = [System.IO.File]::Open($lockFullName, 'CreateNew', 'ReadWrite', 'None');
+        }
+
+        Write-Timing -Format "Creating backup with target $darTarget at {0:O}";
+        $createCommand = "$DarPath -c `"$fullNameCyg`"$referenceArg -B `"$DarConfigCyg`" $darTarget";
+        if ($pscmdlet.ShouldProcess("$createCommand", "Create dar archive"))
+        {
+            Write-Host "$createCommand >> $logFullName";
+            cmd /C $createCommand >> $logFullName;
+        }
+        Write-Timing -Format "Created backup with target $darTarget at {0:O}";
+
+        Write-Timing -Format "Testing backup with target $darTarget at {0:O}";
+        $testCommand = "$DarPath -t `"$fullNameCyg`" -B `"$DarConfigCyg`" $darTarget";
+        if ($pscmdlet.ShouldProcess("$testCommand", "Test dar archive"))
+        {
+            Write-Host "$testCommand >> $logFullName";
+            cmd /C $testCommand >> $logFullName;
+        }
+        Write-Timing -Format "Tested backup with target $darTarget at {0:O}";
+
+        $private:lockFile.Close();
+        Remove-Item -LiteralPath $lockFullName;
     }
-
-    $logFullName = Join-Path $LogPath ($name + '.log');
-
-    Write-Timing -Format "Creating backup with target $darTarget at {0:O}";
-    $createCommand = "$DarPath -c `"$fullNameCyg`"$referenceArg -B `"$DarConfigCyg`" $darTarget";
-    if ($pscmdlet.ShouldProcess("$createCommand", "Create dar archive"))
+    catch
     {
-        Write-Host "$createCommand >> $logFullName";
-        cmd /C $createCommand >> $logFullName;
+        Write-Error "$Error";
+        Set-ErrorLevel 2;
     }
-    Write-Timing -Format "Created backup with target $darTarget at {0:O}";
-
-    Write-Timing -Format "Testing backup with target $darTarget at {0:O}";
-    $testCommand = "$DarPath -t `"$fullNameCyg`" -B `"$DarConfigCyg`" $darTarget";
-    if ($pscmdlet.ShouldProcess("$testCommand", "Test dar archive"))
+    finally
     {
-        Write-Host "$testCommand >> $logFullName";
-        cmd /C $testCommand >> $logFullName;
+        if($private:lockFile -ne $null)
+        {
+            $private:lockFile.Close();
+            $private:lockFile = [System.IO.FileStream] $null;
+        }
+        else
+        {
+            Write-Debug "No lock file present.";
+        }
     }
-    Write-Timing -Format "Tested backup with target $darTarget at {0:O}";
 }
 
 $private:end = Get-Date;

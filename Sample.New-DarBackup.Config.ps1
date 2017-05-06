@@ -16,5 +16,6 @@ $local:DefaultLogPath = '';
 $local:DefaultDarPath = 'C:\Program Files (x86)\dar\dar.exe';
 $local:DefaultFullSuffix = 'full';
 $local:DefaultDiffSuffix = 'diff';
+$local:DefaultIncompleteBackupHandling = 'Delete';
 $local:MaxDiffBackupsSinceLastFull = 31;
 $local:MaxDiffBackupSizeToFullBackupSizeRatio = 0.10;
